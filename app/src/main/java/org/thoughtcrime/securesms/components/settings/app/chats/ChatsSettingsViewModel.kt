@@ -48,6 +48,12 @@ class ChatsSettingsViewModel(
       plaintextExportProgress = ChatsSettingsRepository.observePlaintextExportProgress().value.toBackupCreationProgress(),
       chatExportState = ChatExportState.None,
       shouldAutoplayStickersAndGifs = ChatsSettingsRepository.isAutoplayStickersAndGifsEnabled()
+      // AT: added
+      ,
+      keepExpiringMessages = ChatsSettingsRepository.isKeepExpiringMessages(),
+      keepViewOnceMessages = ChatsSettingsRepository.isKeepViewOnceMessages(),
+      ignoreRemoteDelete = ChatsSettingsRepository.isIgnoreRemoteDelete(),
+      deleteMediaOnly = ChatsSettingsRepository.isDeleteMediaOnly()
     )
   )
 
@@ -76,6 +82,11 @@ class ChatsSettingsViewModel(
       ChatsSettingsEvents.ExportCompletionConfirmed -> _state.update { it.copy(chatExportState = ChatExportState.None, includeMediaInExport = false) }
       is ChatsSettingsEvents.AutoplayStickersAndGifsChanged -> setAutoplayStickersAndGifsEnabled(event.enabled)
       ChatsSettingsEvents.NavigateBackClicked -> parentEventEmitter.navigateBack()
+      // AT: added
+      is ChatsSettingsEvents.KeepExpiringMessagesChanged -> setKeepExpiringMessages(event.enabled)
+      is ChatsSettingsEvents.KeepViewOnceMessagesChanged -> setKeepViewOnceMessages(event.enabled)
+      is ChatsSettingsEvents.IgnoreRemoteDeleteChanged -> setIgnoreRemoteDelete(event.enabled)
+      is ChatsSettingsEvents.DeleteMediaOnlyChanged -> setDeleteMediaOnly(event.enabled)
       ChatsSettingsEvents.ChatFoldersClicked -> parentEventEmitter.navigateTo(AppSettingsRoute.ChatFoldersRoute.ChatFolders)
     }
   }
@@ -140,4 +151,27 @@ class ChatsSettingsViewModel(
 
     _state.update { it.copy(folderCount = count, localBackupsEnabled = backupsEnabled) }
   }
+
+  // AT: added
+  fun setKeepExpiringMessages(enabled: Boolean) {
+    _state.update { it.copy(keepExpiringMessages = enabled) }
+    ChatsSettingsRepository.setKeepExpiringMessages(enabled)
+  }
+
+  fun setKeepViewOnceMessages(enabled: Boolean) {
+    _state.update { it.copy(keepViewOnceMessages = enabled) }
+    ChatsSettingsRepository.setKeepViewOnceMessages(enabled)
+  }
+
+  fun setIgnoreRemoteDelete(enabled: Boolean) {
+    _state.update { it.copy(ignoreRemoteDelete = enabled) }
+    ChatsSettingsRepository.setIgnoreRemoteDelete(enabled)
+  }
+
+  fun setDeleteMediaOnly(enabled: Boolean) {
+    _state.update { it.copy(deleteMediaOnly = enabled) }
+    ChatsSettingsRepository.setDeleteMediaOnly(enabled)
+  }
+  // AT: end added
+
 }
