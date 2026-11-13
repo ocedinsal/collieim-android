@@ -34,7 +34,15 @@ jobs:
               import sys, json, os
               releases = json.load(sys.stdin)
               tag = os.environ['TAG']
-              print('yes' if any(tag in r['tag_name'] for r in releases) else 'no')
+              for r in releases:
+                if tag in r['tag_name']:
+                  if any(a['name'].endswith('.apk') for a in r['assets']):
+                    print('yes')
+                  else:
+                    print('no')
+                  break
+              else:
+                print('no')
               ")
           echo "built=$EXISTS" >> "$GITHUB_OUTPUT"
 
@@ -95,7 +103,13 @@ jobs:
         if: steps.already.outputs.built == 'no'
         id: find_apk
         run: |
-          APK=$(find app/build/outputs/apk -name "*prodWebsiteRelease*.apk" | head -1)
+          APK=$(find app/build/outputs -name "*.apk" -type f 2>/dev/null | head -1)
+          if [ -z "$APK" ]; then
+            echo "::error::No APK found. Build outputs:"
+            find app/build/outputs -type f 2>/dev/null | head -30
+            exit 1
+          fi
+          echo "Found: $APK ($(du -h "$APK" | cut -f1))"
           echo "path=$APK" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
@@ -105,6 +119,7 @@ jobs:
           tag_name: "retained-${{ steps.check.outputs.tag }}"
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
           overwrite_files: true
+          fail_on_unmatched_files: true
           body: |
             Auto-built from Collie `${{ steps.check.outputs.tag }}` with retention controls:
             - Keep view-once media
