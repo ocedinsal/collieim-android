@@ -291,15 +291,14 @@ internal val chatsSettingsPreviewState = ChatsSettingsState(
   useSystemEmoji = false,
   enterKeySends = false,
   localBackupsEnabled = true,
-      // AT/JW: added
-      ,
-      keepExpiringMessages = false,
-      keepViewOnceMessages = false,
-      ignoreRemoteDelete = false,
-      deleteMediaOnly = false
   folderCount = 1,
   userUnregistered = false,
   clientDeprecated = false,
   isPlaintextExportEnabled = true,
-  plaintextExportProgress = BackupCreationProgress.Idle
+  plaintextExportProgress = BackupCreationProgress.Idle,
+  // AT/JW: added
+  keepExpiringMessages = false,
+  keepViewOnceMessages = false,
+  ignoreRemoteDelete = false,
+  deleteMediaOnly = false
 )
