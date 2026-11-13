@@ -18,8 +18,8 @@ plugins {
 val staticIps = Properties().apply { file("static-ips.properties").reader().use { load(it) } }
 staticIps.stringPropertyNames().forEach { rootProject.extra[it] = staticIps.getProperty(it) }
 
-val canonicalVersionCode = 1777
-val canonicalVersionName = "8.35.1"
+val canonicalVersionCode = 1778
+val canonicalVersionName = "8.35.2"
 val currentHotfixVersion = 0
 val maxHotfixVersions = 100
 val mollyRevision = 1
@@ -191,7 +191,7 @@ android {
     buildConfigField("String", "SIGNAL_CANONICAL_VERSION_NAME", "\"$canonicalVersionName\"")
     buildConfigField("String", "BACKUP_BASE_NAME", "\"$baseAppFileName\"")
     buildConfigField("boolean", "FORCE_INTERNAL_USER_FLAG", forceInternalUserFlag)
-    buildConfigField("String", "FDROID_UPDATE_URL", "\"https://molly.im/fdroid/repo\"")
+    buildConfigField("String", "FDROID_UPDATE_URL", "\"https://repo.collie.im/fdroid/repo\"")
 
     vectorDrawables.useSupportLibrary = true
 
@@ -297,13 +297,13 @@ android {
   productFlavors {
     create("store") {
       dimension = "distribution"
-      buildConfigField("boolean", "MANAGE_MOLLY_UPDATES", "false")
+      buildConfigField("boolean", "MANAGE_COLLIE_UPDATES", "false")
     }
 
     create("website") {
       dimension = "distribution"
-      // Collie releases do not use Molly's F-Droid repository for updates.
-      buildConfigField("boolean", "MANAGE_MOLLY_UPDATES", "false")
+      // Authenticated release notifications; downloads remain user initiated.
+      buildConfigField("boolean", "MANAGE_COLLIE_UPDATES", "true")
       isDefault = true
     }
 
@@ -638,7 +638,7 @@ fun getLastCommitTimestamp(): String = providers.gradleProperty("collieBuildTime
 
 fun getGitHash(): String = providers.gradleProperty("collieBuildRevision").get()
 
-fun requireCommitTag(): String = providers.gradleProperty("releaseVersionName").getOrElse("8.35.1-1-port-unvalidated")
+fun requireCommitTag(): String = providers.gradleProperty("releaseVersionName").getOrElse("${canonicalVersionName}-${mollyRevision}-port-unvalidated")
 
 // Publication migration gate: remove only with reviewed public native inputs and
 // direct-source acceptance. The legacy operator route is retained in engineering.
