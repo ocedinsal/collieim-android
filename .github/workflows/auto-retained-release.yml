@@ -19,8 +19,7 @@ jobs:
       - name: Check for new upstream release
         id: check
         run: |
-          TAG=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            https://api.github.com/repos/0cwa/collieim-android/releases \
+          TAG=$(curl -s https://api.github.com/repos/0cwa/collieim-android/releases \
             | python3 -c "import sys,json; releases=json.load(sys.stdin); \
               print([r['tag_name'] for r in releases if not r['draft']][0])")
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
