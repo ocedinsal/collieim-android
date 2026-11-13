@@ -40,61 +40,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Fetch upstream release
+      - name: Build from retention branch
         if: steps.already.outputs.built == 'no'
         run: |
-          git remote add upstream https://github.com/0cwa/collieim-android.git
-          git fetch upstream "${{ steps.check.outputs.tag }}" --depth=1
-          git checkout -B build "${{ steps.check.outputs.tag }}"
-          git checkout origin/main -- patches/forks/signal-foss/retention-controls/
-          git checkout origin/main -- patches/forks/signal-foss/retention-controls-fixes/
-
-      - name: Apply retention patches
-        if: steps.already.outputs.built == 'no'
-        run: |
-          set -e
-          PATCH1="patches/forks/signal-foss/retention-controls/0001-retention-controls.patch"
-          PATCH2="patches/forks/signal-foss/retention-controls-fixes/0001-retention-controls-fixes.patch"
-
-          apply_patch() {
-            local patch_file="$1"
-            local label="$2"
-
-            echo "=== Applying: $label ==="
-
-            # Attempt 1: clean apply
-            if git apply --check "$patch_file" 2>/dev/null; then
-              echo "  → Clean apply succeeded"
-              git apply "$patch_file"
-              return 0
-            fi
-
-            # Attempt 2: 3-way merge
-            echo "  → Clean apply failed, trying 3-way merge..."
-            if git apply --3way "$patch_file" 2>/dev/null; then
-              echo "  → 3-way merge succeeded"
-              return 0
-            fi
-
-            # Attempt 3: GNU patch with high fuzz
-            echo "  → 3-way failed, trying patch --fuzz=5..."
-            if patch --batch --forward --fuzz=5 -p1 < "$patch_file"; then
-              echo "  → patch --fuzz=5 succeeded"
-              find . -name "*.orig" -delete 2>/dev/null || true
-              return 0
-            fi
-
-            # All attempts failed
-            echo "::error::FAILED to apply $label ($patch_file)"
-            echo "::error::The upstream source has changed too much. Re-base the patch manually."
-            return 1
-          }
-
-          apply_patch "$PATCH1" "retention-controls"
-          apply_patch "$PATCH2" "retention-controls-fixes"
-
-          echo "=== All patches applied successfully ==="
-          git diff --stat
+          git checkout retention
 
       - name: Set up JDK 21
         if: steps.already.outputs.built == 'no'
