@@ -29,13 +29,15 @@ jobs:
         env:
           TAG: ${{ steps.check.outputs.tag }}
         run: |
-          EXISTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/releases" \
+          EXISTS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/releases" \
             | python3 -c "
               import sys, json, os
-              releases = json.load(sys.stdin)
+              data = json.load(sys.stdin)
+              if not isinstance(data, list):
+                print('no')
+                sys.exit(0)
               tag = os.environ['TAG']
-              for r in releases:
+              for r in data:
                 if tag in r['tag_name']:
                   if any(a['name'].endswith('.apk') for a in r['assets']):
                     print('yes')
