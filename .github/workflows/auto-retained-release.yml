@@ -2,7 +2,7 @@ name: Auto Retained Release
 
 on:
   schedule:
-    - cron: '0 */5 * * *'
+    - cron: '17 */5 * * *'
   workflow_dispatch:
 
 permissions:
@@ -34,7 +34,7 @@ jobs:
               ")
           echo "built=$EXISTS" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout fork
+      - name: Checkout retention branch
         if: steps.already.outputs.built == 'no'
         uses: actions/checkout@v4
         with:
@@ -44,22 +44,23 @@ jobs:
       - name: Fetch upstream and rebase
         if: steps.already.outputs.built == 'no'
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/0cwa/collieim-android.git 2>/dev/null || true
           git fetch upstream --tags
           NEW_TAG="${{ steps.check.outputs.tag }}"
 
-          # Check if we're already based on this tag
           if git merge-base --is-ancestor "$NEW_TAG" retention 2>/dev/null; then
-            echo "Already based on $NEW_TAG, no rebase needed"
+            echo "Already based on $NEW_TAG or later, no rebase needed"
           else
             echo "Rebasing retention onto $NEW_TAG..."
             if git rebase --onto "$NEW_TAG" retention~1 retention 2>/dev/null; then
-              echo "Rebase succeeded, force-pushing updated retention branch"
+              echo "Rebase succeeded"
               git push --force-with-lease origin retention
             else
               git rebase --abort
               echo "::warning::Rebase onto $NEW_TAG failed (conflicts). Building last known-good retention branch."
-              echo "::warning::When you have time, rebase manually: git rebase --onto $NEW_TAG retention~1 retention"
+              echo "::warning::When you have time: git rebase --onto $NEW_TAG retention~1 retention && git push --force-with-lease origin retention"
             fi
           fi
 
@@ -73,22 +74,15 @@ jobs:
       - name: Decode keystore
         if: steps.already.outputs.built == 'no'
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
-          GRADLE_DAEMON_DIR=$(find /home/runner/.gradle/daemon -maxdepth 1 -type d 2>/dev/null | tail -1)
-          if [ -z "$GRADLE_DAEMON_DIR" ]; then
-            GRADLE_DAEMON_DIR="/home/runner/.gradle/daemon/9.6.0"
-            mkdir -p "$GRADLE_DAEMON_DIR"
-          fi
-          cp release.keystore "$GRADLE_DAEMON_DIR/release.keystore"
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > "$GITHUB_WORKSPACE/release.keystore"
 
       - name: Build APK
         if: steps.already.outputs.built == 'no'
         run: |
           chmod +x gradlew
           ./gradlew assembleProdWebsiteRelease \
-            -x lintVitalAnalyzeProdWebsiteRelease \
-            -x lintVitalReportProdWebsiteRelease \
-            -Pandroid.injected.signing.store.file=release.keystore \
+            -x lintVitalProdWebsiteRelease \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/release.keystore" \
             -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
             -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
             -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
@@ -106,6 +100,7 @@ jobs:
         with:
           tag_name: "retained-${{ steps.check.outputs.tag }}"
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
+          overwrite: true
           body: |
             Auto-built from Collie `${{ steps.check.outputs.tag }}` with retention controls:
             - Keep view-once media
