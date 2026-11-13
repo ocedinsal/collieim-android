@@ -1,0 +1,72 @@
+name: Auto Retained Release
+
+on:
+  schedule:
+    - cron: '0 */5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for new upstream release
+        id: check
+        run: |
+          TAG=$(curl -s https://api.github.com/repos/0cwa/collieim-android/releases \
+            | python3 -c "import sys,json; releases=json.load(sys.stdin); \
+              print([r['tag_name'] for r in releases if not r['draft']][0])")
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream release
+        run: |
+          git remote add upstream https://github.com/0cwa/collieim-android.git
+          git fetch upstream "${{ steps.check.outputs.tag }}" --depth=1
+          git checkout -B build "${{ steps.check.outputs.tag }}"
+          git checkout origin/main -- patches/forks/signal-foss/retention-controls/
+          git checkout origin/main -- patches/forks/signal-foss/retention-controls-fixes/
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > release.keystore
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleProdWebsiteRelease \
+            -Pandroid.injected.signing.store.file=release.keystore \
+            -Pandroid.injected.signing.store.password="${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            -Pandroid.injected.signing.key.alias="${{ secrets.ANDROID_KEY_ALIAS }}" \
+            -Pandroid.injected.signing.key.password="${{ secrets.ANDROID_KEY_PASSWORD }}"
+
+      - name: Find APK
+        id: find_apk
+        run: |
+          APK=$(find app/build/outputs/apk -name "*prodWebsiteRelease*.apk" | head -1)
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "retained-${{ steps.check.outputs.tag }}"
+          name: "Collie Retained ${{ steps.check.outputs.tag }}"
+          body: |
+            Auto-built from Collie `${{ steps.check.outputs.tag }}` with retention controls:
+            - Keep view-once media
+            - Keep expiring messages
+            - Ignore remote delete
+            - Delete media only
+          files: ${{ steps.find_apk.outputs.path }}
