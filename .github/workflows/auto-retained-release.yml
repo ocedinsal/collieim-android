@@ -5,6 +5,10 @@ on:
     - cron: '17 */5 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: auto-retained-release
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -36,7 +40,7 @@ jobs:
 
       - name: Checkout retention branch
         if: steps.already.outputs.built == 'no'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: retention
           fetch-depth: 0
@@ -66,7 +70,7 @@ jobs:
 
       - name: Set up JDK 21
         if: steps.already.outputs.built == 'no'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
@@ -96,11 +100,11 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.already.outputs.built == 'no'
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: "retained-${{ steps.check.outputs.tag }}"
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
-          overwrite: true
+          overwrite_files: true
           body: |
             Auto-built from Collie `${{ steps.check.outputs.tag }}` with retention controls:
             - Keep view-once media
@@ -108,3 +112,27 @@ jobs:
             - Ignore remote delete
             - Delete media only
           files: ${{ steps.find_apk.outputs.path }}
+
+      - name: Delete old releases (keep only latest)
+        if: steps.already.outputs.built == 'no'
+        env:
+          CURRENT_TAG: "retained-${{ steps.check.outputs.tag }}"
+        run: |
+          curl -s -H "Authorization: token $GITHUB_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/releases?per_page=100" \
+            | python3 -c "
+              import sys, json, os
+              releases = json.load(sys.stdin)
+              current = os.environ['CURRENT_TAG']
+              for r in releases:
+                if r['tag_name'] != current:
+                  print(r['id'])
+              " > /tmp/old_release_ids.txt
+          COUNT=0
+          while read -r ID; do
+            [ -z "$ID" ] && continue
+            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
+              "https://api.github.com/repos/${{ github.repository }}/releases/$ID" > /dev/null
+            COUNT=$((COUNT + 1))
+          done < /tmp/old_release_ids.txt
+          echo "Deleted $COUNT old release(s). Keeping: $CURRENT_TAG"
