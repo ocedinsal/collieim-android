@@ -20,8 +20,18 @@ jobs:
         id: check
         run: |
           TAG=$(curl -s https://api.github.com/repos/0cwa/collieim-android/releases \
-            | python3 -c "import sys,json; releases=json.load(sys.stdin); \
-              print([r['tag_name'] for r in releases if not r['draft']][0])")
+            | python3 -c "
+              import sys, json
+              data = json.load(sys.stdin)
+              if not isinstance(data, list):
+                print('::error::Upstream API returned an error:', data.get('message', data), file=sys.stderr)
+                sys.exit(1)
+              print([r['tag_name'] for r in data if not r['draft']][0])
+              ")
+          if [ -z "$TAG" ]; then
+            echo "::error::Could not determine upstream release tag"
+            exit 1
+          fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
       - name: Check if already built
@@ -68,14 +78,19 @@ jobs:
           if git merge-base --is-ancestor "$NEW_TAG" retention 2>/dev/null; then
             echo "Already based on $NEW_TAG or later, no rebase needed"
           else
-            echo "Rebasing retention onto $NEW_TAG..."
-            if git rebase --onto "$NEW_TAG" retention~1 retention 2>/dev/null; then
+            BASE=$(git merge-base retention "$NEW_TAG")
+            if [ -z "$BASE" ]; then
+              echo "::warning::Could not find merge base. Skipping rebase."
+              exit 0
+            fi
+            echo "Rebasing retention (base: $BASE) onto $NEW_TAG..."
+            if git rebase --onto "$NEW_TAG" "$BASE" retention 2>/dev/null; then
               echo "Rebase succeeded"
               git push --force-with-lease origin retention
             else
               git rebase --abort
               echo "::warning::Rebase onto $NEW_TAG failed (conflicts). Building last known-good retention branch."
-              echo "::warning::When you have time: git rebase --onto $NEW_TAG retention~1 retention && git push --force-with-lease origin retention"
+              echo "::warning::When you have time: git rebase --onto $NEW_TAG $(git rev-parse $BASE) retention && git push --force-with-lease origin retention"
             fi
           fi
 
