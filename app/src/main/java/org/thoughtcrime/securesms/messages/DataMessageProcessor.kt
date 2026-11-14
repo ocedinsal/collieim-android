@@ -1359,6 +1359,8 @@ object DataMessageProcessor {
   }
 
   fun handleAdminRemoteDelete(context: Context, envelope: Envelope, message: DataMessage, senderRecipient: Recipient, threadRecipient: Recipient, earlyMessageCacheEntry: EarlyMessageCacheEntry?, batchCache: BatchCache): MessageId? {
+    if (SignalStore.settings.isIgnoreRemoteDelete) return null
+
     val delete = message.adminDelete!!
 
     log(envelope.clientTimestamp!!, "Admin delete for message ${delete.targetSentTimestamp}")
