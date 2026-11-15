@@ -140,12 +140,6 @@ jobs:
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
           overwrite_files: true
           fail_on_unmatched_files: true
-          body: |
-            Auto-built from Collie `${{ steps.check.outputs.tag }}` with retention controls:
-            - Keep view-once media
-            - Keep expiring messages
-            - Ignore remote delete
-            - Delete media only
           files: ${{ steps.find_apk.outputs.path }}
 
       - name: Delete old releases (keep only latest)
