@@ -1,4 +1,4 @@
-$name: Auto Retained Release
+name: Auto Retained Release
 
 on:
   schedule:
