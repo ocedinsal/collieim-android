@@ -152,7 +152,7 @@ jobs:
         with:
           tag_name: "retained-${{ steps.check.outputs.tag }}"
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
-          body: ''
+          body: '​'
           token: ${{ secrets.PUSH_TOKEN }}
           overwrite_files: true
           fail_on_unmatched_files: true
