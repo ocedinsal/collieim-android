@@ -98,22 +98,24 @@ jobs:
             git apply /tmp/retention.patch
           else
             echo "Clean apply failed. Trying 3-way merge..."
-            if git apply --3way /tmp/retention.patch 2>&1; then
-              echo "3-way merge succeeded (or left conflicts)."
-              CONFLICTS=$(git diff --name-only --diff-filter=U)
-              if [ -n "$CONFLICTS" ]; then
-                echo "Resolving conflicts by taking upstream:"
-                echo "$CONFLICTS"
-                echo "$CONFLICTS" | while read -r f; do
-                  git checkout HEAD -- "$f"
-                  git add "$f"
-                done
-              fi
-            else
-              echo "::error::Patch failed to apply (clean and 3-way both failed)."
-              echo "::error::The upstream code has changed too much for the patch to fit."
+            git apply --3way /tmp/retention.patch 2>&1 || true
+
+            CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null)
+            if [ -n "$CONFLICTS" ]; then
+              echo "3-way merge left conflicts. Resolving by taking THEIRS (retention patch):"
+              echo "$CONFLICTS"
+              echo "$CONFLICTS" | while read -r f; do
+                git checkout --theirs -- "$f"
+                git add "$f"
+              done
+              echo "Conflicts resolved (retention features preserved)."
+              echo "::warning::Conflicted files took the retention version. If upstream made incompatible changes to these files, the build may fail."
+            elif [ -z "$(git status --porcelain)" ]; then
+              echo "::error::Patch failed completely. Nothing was applied."
               echo "::error::Regenerate retention.patch when you have time."
               exit 1
+            else
+              echo "3-way merge applied with some fallbacks. No conflicts to resolve."
             fi
           fi
 
@@ -167,15 +169,16 @@ jobs:
         run: |
           APK="${{ steps.find_apk.outputs.path }}"
           EXPECTED="${{ steps.check.outputs.tag }}"
-          # Find aapt2 (build-tools 33+ only ships aapt2, not aapt)
-          AAPT2="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2"
-          if [ ! -x "$AAPT2" ]; then
-            echo "::warning::aapt2 not found at $AAPT2. Skipping version verification."
-            exit 0
+          EXPECTED="${EXPECTED#v}"
+          AAPT2=$(find "$ANDROID_HOME/build-tools" -name "aapt2" -type f 2>/dev/null | head -1)
+          if [ -z "$AAPT2" ] || [ ! -x "$AAPT2" ]; then
+            echo "::error::aapt2 not found in $ANDROID_HOME/build-tools. Cannot verify version. Aborting."
+            exit 1
           fi
+          echo "Using aapt2: $AAPT2"
           VERSION_NAME=$("$AAPT2" dump badging "$APK" 2>/dev/null | grep "versionName" | sed "s/.*versionName='\(.*\)'.*/\1/")
           echo "APK versionName: $VERSION_NAME"
-          echo "Expected tag:    $EXPECTED"
+          echo "Expected version: $EXPECTED"
           if [ -z "$VERSION_NAME" ]; then
             echo "::error::Could not extract versionName from APK. Aborting."
             exit 1
