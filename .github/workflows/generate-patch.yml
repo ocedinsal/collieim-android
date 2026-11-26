@@ -1,0 +1,53 @@
+name: Generate Retention Patch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout retention branch
+        uses: actions/checkout@v5
+        with:
+          ref: retention
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/0cwa/collieim-android.git 2>/dev/null || true
+          git fetch upstream --tags
+
+      - name: Find base tag and generate patch
+        run: |
+          BASE="v8.36.3-1-rc2"
+          echo "Base tag: $BASE"
+          git diff --full-index "$BASE"..HEAD \
+            -- . \
+            ':!gradle.properties' \
+            ':!*.orig' \
+            ':!*0001-retention-controls*.patch' \
+            > retention.patch
+          if [ ! -s retention.patch ]; then
+            echo "::error::Patch is empty. Something went wrong."
+            exit 1
+          fi
+          echo "Patch: $(wc -l < retention.patch) lines, $(wc -c < retention.patch) bytes"
+          echo ""
+          echo "Files in patch:"
+          git diff --name-only "$BASE"..HEAD \
+            -- . \
+            ':!gradle.properties' \
+            ':!*.orig' \
+            ':!*0001-retention-controls*.patch'
+
+      - name: Commit and push patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add retention.patch
+          git commit -m "Auto-generate retention.patch (base: v8.36.3-1-rc2)"
+          git push origin retention
