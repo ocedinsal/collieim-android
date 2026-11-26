@@ -62,50 +62,66 @@ jobs:
               ")
           echo "built=$EXISTS" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout retention branch
+      - name: Checkout upstream tag
         if: steps.already.outputs.built == 'no'
         uses: actions/checkout@v5
         with:
-          ref: retention
+          repository: 0cwa/collieim-android
+          ref: ${{ steps.check.outputs.tag }}
           fetch-depth: 0
-          token: ${{ secrets.PUSH_TOKEN }}
 
-      - name: Verify correct branch
+      - name: Download retention patch
         if: steps.already.outputs.built == 'no'
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
         run: |
-          CURRENT=$(git rev-parse --abbrev-ref HEAD)
-          if [ "$CURRENT" != "retention" ]; then
-            echo "::warning::On '$CURRENT', not 'retention'. Fixing..."
-            git checkout retention
-          fi
-
-      - name: Fetch upstream and rebase
-        if: steps.already.outputs.built == 'no'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git remote add upstream https://github.com/0cwa/collieim-android.git 2>/dev/null || true
-          git fetch upstream --tags
-          NEW_TAG="${{ steps.check.outputs.tag }}"
-
-          if git merge-base --is-ancestor "$NEW_TAG" retention 2>/dev/null; then
-            echo "Already based on $NEW_TAG or later, no rebase needed"
+          curl -s -H "Authorization: token $PUSH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/retention.patch?ref=retention" \
+            | python3 -c "import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['content']).decode())" \
+            > /tmp/retention.patch
+          if [ ! -s /tmp/retention.patch ]; then
+            echo "::warning::retention.patch is empty. Building plain upstream (no retention features)."
           else
-            BASE=$(git merge-base retention "$NEW_TAG")
-            if [ -z "$BASE" ]; then
-              echo "::warning::Could not find merge base. Skipping rebase."
-              exit 0
-            fi
-            echo "Rebasing retention (base: $BASE) onto $NEW_TAG..."
-            if git rebase --onto "$NEW_TAG" "$BASE" retention 2>/dev/null; then
-              echo "Rebase succeeded"
-              git push --force-with-lease origin retention
+            echo "Patch: $(wc -l < /tmp/retention.patch) lines"
+          fi
+
+      - name: Apply retention patch
+        if: steps.already.outputs.built == 'no'
+        run: |
+          if [ ! -s /tmp/retention.patch ]; then
+            echo "Empty patch, nothing to apply."
+            exit 0
+          fi
+
+          if git apply --check /tmp/retention.patch 2>/dev/null; then
+            echo "Patch applies cleanly."
+            git apply /tmp/retention.patch
+          else
+            echo "Clean apply failed. Trying 3-way merge..."
+            if git apply --3way /tmp/retention.patch 2>&1; then
+              echo "3-way merge succeeded (or left conflicts)."
+              CONFLICTS=$(git diff --name-only --diff-filter=U)
+              if [ -n "$CONFLICTS" ]; then
+                echo "Resolving conflicts by taking upstream:"
+                echo "$CONFLICTS"
+                echo "$CONFLICTS" | while read -r f; do
+                  git checkout HEAD -- "$f"
+                  git add "$f"
+                done
+              fi
             else
-              git rebase --abort
-              echo "::warning::Rebase onto $NEW_TAG failed (conflicts). Building last known-good retention branch."
-              echo "::warning::When you have time: git rebase --onto $NEW_TAG $(git rev-parse $BASE) retention && git push --force-with-lease origin retention"
+              echo "::error::Patch failed to apply (clean and 3-way both failed)."
+              echo "::error::The upstream code has changed too much for the patch to fit."
+              echo "::error::Regenerate retention.patch when you have time."
+              exit 1
             fi
           fi
+
+          git checkout HEAD -- gradle.properties 2>/dev/null || true
+
+          echo "Final state:"
+          git status --short
+          git diff --stat HEAD
 
       - name: Set up JDK 21
         if: steps.already.outputs.built == 'no'
@@ -145,6 +161,31 @@ jobs:
           mv "$APK" "./$FINAL_NAME"
           echo "Renamed to: $FINAL_NAME ($(du -h "./$FINAL_NAME" | cut -f1))"
           echo "path=./$FINAL_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Verify APK version matches expected tag
+        if: steps.already.outputs.built == 'no'
+        run: |
+          APK="${{ steps.find_apk.outputs.path }}"
+          EXPECTED="${{ steps.check.outputs.tag }}"
+          # Find aapt2 (build-tools 33+ only ships aapt2, not aapt)
+          AAPT2="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/aapt2"
+          if [ ! -x "$AAPT2" ]; then
+            echo "::warning::aapt2 not found at $AAPT2. Skipping version verification."
+            exit 0
+          fi
+          VERSION_NAME=$("$AAPT2" dump badging "$APK" 2>/dev/null | grep "versionName" | sed "s/.*versionName='\(.*\)'.*/\1/")
+          echo "APK versionName: $VERSION_NAME"
+          echo "Expected tag:    $EXPECTED"
+          if [ -z "$VERSION_NAME" ]; then
+            echo "::error::Could not extract versionName from APK. Aborting."
+            exit 1
+          fi
+          if [ "$VERSION_NAME" != "$EXPECTED" ]; then
+            echo "::error::VERSION MISMATCH! APK says '$VERSION_NAME' but expected '$EXPECTED'."
+            echo "::error::Refusing to publish. The patch may not have applied correctly."
+            exit 1
+          fi
+          echo "✓ Version verified: $VERSION_NAME"
 
       - name: Create GitHub Release
         if: steps.already.outputs.built == 'no'
