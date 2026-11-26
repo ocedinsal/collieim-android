@@ -1,0 +1,50 @@
+name: Inspect Retention Branch
+
+on:
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout retention
+        uses: actions/checkout@v5
+        with:
+          ref: retention
+          fetch-depth: 0
+
+      - name: Fetch upstream tags
+        run: |
+          git remote add upstream https://github.com/0cwa/collieim-android.git 2>/dev/null || true
+          git fetch upstream --tags
+
+      - name: Show what's different
+        run: |
+          BASE=$(git describe --tags --abbrev=0 HEAD 2>/dev/null)
+          if [ -z "$BASE" ]; then
+            echo "::error::No reachable upstream tag. Trying to find nearest..."
+            # Fallback: find the tag with the most recent merge-base
+            for tag in $(git tag | head -20); do
+              if git merge-base HEAD "$tag" >/dev/null 2>&1; then
+                BASE="$tag"
+                break
+              fi
+            done
+          fi
+          echo "=== Base tag: $BASE ==="
+          echo ""
+          echo "=== Files modified (excluding gradle.properties) ==="
+          git diff --stat "$BASE"..HEAD -- . ':!gradle.properties'
+          echo ""
+          echo "=== Binary files? ==="
+          git diff --name-only "$BASE"..HEAD -- . ':!gradle.properties' | while read -r f; do
+            if git diff "$BASE"..HEAD -- "$f" | grep -q "Binary files differ"; then
+              echo "BINARY: $f"
+            fi
+          done
+          echo ""
+          echo "=== Number of local commits ==="
+          git rev-list --count "$BASE"..HEAD
+          echo ""
+          echo "=== Commit messages ==="
+          git log --oneline "$BASE"..HEAD
