@@ -51,7 +51,7 @@ jobs:
                   sys.exit(0)
               tag = os.environ['TAG']
               for r in data:
-                  if r['tag_name'] in (f'retained-{tag}', f'retained-{tag}-r2'):
+                  if r['tag_name'] == f'retained-{tag}':
                       if any(a['name'].endswith('.apk') for a in r['assets']):
                           print('yes')
                       else:
@@ -224,7 +224,7 @@ jobs:
         if: steps.already.outputs.built == 'no'
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: "retained-${{ steps.check.outputs.tag }}-r2"
+          tag_name: "retained-${{ steps.check.outputs.tag }}"
           name: "Collie Retained ${{ steps.check.outputs.tag }}"
           body: '​'
           token: ${{ secrets.PUSH_TOKEN }}
@@ -235,7 +235,7 @@ jobs:
       - name: Delete old releases (keep only latest)
         if: steps.already.outputs.built == 'no'
         env:
-          CURRENT_TAG: "retained-${{ steps.check.outputs.tag }}-r2"
+          CURRENT_TAG: "retained-${{ steps.check.outputs.tag }}"
           PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
         run: |
           if ! curl -s -H "Authorization: token $PUSH_TOKEN" \
