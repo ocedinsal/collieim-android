@@ -91,13 +91,13 @@ jobs:
           PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
         run: |
           curl -s -H "Authorization: token $PUSH_TOKEN" \
-            "https://api.github.com/repos/${{ github.repository }}/contents/retention-overlay.patch?ref=retention" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/retention-overlay.py?ref=retention" \
             | python3 -c "import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['content']).decode())" \
-            > /tmp/retention-overlay.patch 2>/dev/null || true
-          if [ -s /tmp/retention-overlay.patch ]; then
-            echo "Overlay: $(wc -l < /tmp/retention-overlay.patch) lines"
+            > /tmp/retention-overlay.py 2>/dev/null || true
+          if [ -s /tmp/retention-overlay.py ]; then
+            echo "Overlay script ready."
           else
-            echo "No overlay patch found. Skipping overlay step."
+            echo "No overlay script found. Skipping."
           fi
 
       - name: Apply retention patch
@@ -142,27 +142,18 @@ jobs:
       - name: Apply retention overlay
         if: steps.already.outputs.built == 'no'
         run: |
-          if [ ! -s /tmp/retention-overlay.patch ]; then
-            echo "No overlay patch. Skipping."
+          if [ ! -s /tmp/retention-overlay.py ]; then
+            echo "No overlay script. Skipping."
             exit 0
           fi
-
-          echo "Applying overlay with fuzz..."
-          if patch -p1 --batch --fuzz=3 --forward < /tmp/retention-overlay.patch; then
-            echo "Overlay applied cleanly."
+          echo "Running overlay script..."
+          if python3 /tmp/retention-overlay.py; then
+            echo "Overlay applied."
+            git add -A
           else
-            REJECTS=$(find . -name "*.rej" -type f 2>/dev/null)
-            if [ -n "$REJECTS" ]; then
-              echo "::warning::Some overlay hunks were rejected:"
-              echo "$REJECTS"
-              echo "$REJECTS" | xargs cat
-              find . -name "*.rej" -delete
-              echo "::warning::If the build fails, the overlay needs updating."
-            else
-              echo "Overlay hunks already applied (no changes needed)."
-            fi
+            echo "::error::Overlay script failed."
+            exit 1
           fi
-          git add -A
 
       - name: Set up JDK 21
         if: steps.already.outputs.built == 'no'
@@ -224,7 +215,7 @@ jobs:
           fi
           if [ "$VERSION_NAME" != "$EXPECTED" ]; then
             echo "::error::VERSION MISMATCH! APK says '$VERSION_NAME' but expected '$EXPECTED'."
-            echo "::error::Refusing to publish. The patch may not have applied correctly."
+            echo "::error::Refusing to publish."
             exit 1
           fi
           echo "✓ Version verified: $VERSION_NAME"
