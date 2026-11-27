@@ -85,6 +85,21 @@ jobs:
             echo "Patch: $(wc -l < /tmp/retention.patch) lines"
           fi
 
+      - name: Download retention overlay
+        if: steps.already.outputs.built == 'no'
+        env:
+          PUSH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+        run: |
+          curl -s -H "Authorization: token $PUSH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/contents/retention-overlay.patch?ref=retention" \
+            | python3 -c "import sys,json,base64; print(base64.b64decode(json.load(sys.stdin)['content']).decode())" \
+            > /tmp/retention-overlay.patch 2>/dev/null || true
+          if [ -s /tmp/retention-overlay.patch ]; then
+            echo "Overlay: $(wc -l < /tmp/retention-overlay.patch) lines"
+          else
+            echo "No overlay patch found. Skipping overlay step."
+          fi
+
       - name: Apply retention patch
         if: steps.already.outputs.built == 'no'
         run: |
@@ -102,14 +117,13 @@ jobs:
 
             CONFLICTS=$(git diff --name-only --diff-filter=U 2>/dev/null)
             if [ -n "$CONFLICTS" ]; then
-              echo "3-way merge left conflicts. Resolving by taking THEIRS (retention patch):"
+              echo "3-way merge left conflicts. Resolving by taking upstream (HEAD):"
               echo "$CONFLICTS"
               echo "$CONFLICTS" | while read -r f; do
-                git checkout --theirs -- "$f"
+                git checkout HEAD -- "$f"
                 git add "$f"
               done
-              echo "Conflicts resolved (retention features preserved)."
-              echo "::warning::Conflicted files took the retention version. If upstream made incompatible changes to these files, the build may fail."
+              echo "Conflicts resolved (upstream version taken. Overlay will re-add retention fields)."
             elif [ -z "$(git status --porcelain)" ]; then
               echo "::error::Patch failed completely. Nothing was applied."
               echo "::error::Regenerate retention.patch when you have time."
@@ -124,6 +138,31 @@ jobs:
           echo "Final state:"
           git status --short
           git diff --stat HEAD
+
+      - name: Apply retention overlay
+        if: steps.already.outputs.built == 'no'
+        run: |
+          if [ ! -s /tmp/retention-overlay.patch ]; then
+            echo "No overlay patch. Skipping."
+            exit 0
+          fi
+
+          echo "Applying overlay with fuzz..."
+          if patch -p1 --batch --fuzz=3 --forward < /tmp/retention-overlay.patch; then
+            echo "Overlay applied cleanly."
+          else
+            REJECTS=$(find . -name "*.rej" -type f 2>/dev/null)
+            if [ -n "$REJECTS" ]; then
+              echo "::warning::Some overlay hunks were rejected:"
+              echo "$REJECTS"
+              echo "$REJECTS" | xargs cat
+              find . -name "*.rej" -delete
+              echo "::warning::If the build fails, the overlay needs updating."
+            else
+              echo "Overlay hunks already applied (no changes needed)."
+            fi
+          fi
+          git add -A
 
       - name: Set up JDK 21
         if: steps.already.outputs.built == 'no'
