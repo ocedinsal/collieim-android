@@ -1,0 +1,69 @@
+diff --git a/feature/app-settings/src/main/java/org/signal/appsettings/chats/ChatsSettingsState.kt b/feature/app-settings/src/main/java/org/signal/appsettings/chats/ChatsSettingsState.kt
+index 60566c3de4..132b8a1ce0 100644
+--- a/feature/app-settings/src/main/java/org/signal/appsettings/chats/ChatsSettingsState.kt
++++ b/feature/app-settings/src/main/java/org/signal/appsettings/chats/ChatsSettingsState.kt
+@@ -22,6 +22,12 @@ data class ChatsSettingsState(
+   val chatExportState: ChatExportState = ChatExportState.None,
+   val includeMediaInExport: Boolean = false,
+   val shouldAutoplayStickersAndGifs: Boolean = false
++  // AT+JW: added extra preferences
++  ,
++  val keepExpiringMessages: Boolean = false,
++  val keepViewOnceMessages: Boolean = false,
++  val ignoreRemoteDelete: Boolean = false,
++  val deleteMediaOnly: Boolean = false
+ ) {
+   fun isRegisteredAndUpToDate(): Boolean {
+     return !userUnregistered && !clientDeprecated
+diff --git a/feature/app-settings/src/test/java/org/signal/appsettings/chats/ChatsSettingsScreenTest.kt b/feature/app-settings/src/test/java/org/signal/appsettings/chats/ChatsSettingsScreenTest.kt
+index 0f2cf461dc..92cf4e18ba 100644
+--- a/feature/app-settings/src/test/java/org/signal/appsettings/chats/ChatsSettingsScreenTest.kt
++++ b/feature/app-settings/src/test/java/org/signal/appsettings/chats/ChatsSettingsScreenTest.kt
+@@ -10,6 +10,7 @@ import androidx.compose.runtime.CompositionLocalProvider
+ import androidx.compose.ui.platform.LocalInspectionMode
+ import androidx.compose.ui.test.assertIsDisplayed
+ import androidx.compose.ui.test.assertIsNotEnabled
++import androidx.compose.ui.test.hasText
+ import androidx.compose.ui.test.hasTestTag
+ import androidx.compose.ui.test.junit4.createComposeRule
+ import androidx.compose.ui.test.onNodeWithContentDescription
+@@ -49,6 +50,39 @@ class ChatsSettingsScreenTest {
+ 
+   private val events = mutableListOf<ChatsSettingsEvents>()
+ 
++  @Test
++  fun retentionControlsStartOffAndDispatchTheirToggleEvents() {
++    setContent(createState())
++    val controls = listOf(
++      R.string.ChatsSettingsFragment__keep_expiring_messages to ChatsSettingsEvents.KeepExpiringMessagesChanged(true),
++      R.string.ChatsSettingsFragment__keep_view_once_messages to ChatsSettingsEvents.KeepViewOnceMessagesChanged(true),
++      R.string.ChatsSettingsFragment__ignore_remote_delete to ChatsSettingsEvents.IgnoreRemoteDeleteChanged(true),
++      R.string.ChatsSettingsFragment__delete_media_only to ChatsSettingsEvents.DeleteMediaOnlyChanged(true)
++    )
++    controls.forEach { (label, event) ->
++      val text = context.getString(label)
++      composeTestRule.onNodeWithTag(ChatsSettingsTestTags.SCROLLER).performScrollToNode(hasText(text))
++      composeTestRule.onNodeWithText(text).performClick()
++      assertThat(events).contains(event)
++    }
++  }
++
++  @Test
++  fun retentionSummariesExplainThatDisablingDoesNotDeleteKeptContent() {
++    setContent(createState())
++    listOf(
++      R.string.ChatsSettingsFragment__keep_view_once_messages_summary,
++      R.string.ChatsSettingsFragment__keep_expiring_messages_summary,
++      R.string.ChatsSettingsFragment__ignore_remote_delete_summary,
++      R.string.ChatsSettingsFragment__delete_media_only_summary
++    ).forEach { summary ->
++      val text = context.getString(summary)
++      assertThat(text).contains("Turning this off does not delete messages or media already kept.")
++      composeTestRule.onNodeWithTag(ChatsSettingsTestTags.SCROLLER).performScrollToNode(hasText(text))
++      composeTestRule.onNodeWithText(text).assertIsDisplayed()
++    }
++  }
++
+   @Test
+   fun whenScreenResumes_thenIExpectRefreshEvent() {
+     setContent(createState())
