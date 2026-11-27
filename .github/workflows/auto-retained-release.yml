@@ -206,7 +206,7 @@ jobs:
             exit 1
           fi
           echo "Using aapt2: $AAPT2"
-          VERSION_NAME=$("$AAPT2" dump badging "$APK" 2>/dev/null | grep "versionName" | sed "s/.*versionName='\(.*\)'.*/\1/")
+          VERSION_NAME=$("$AAPT2" dump badging "$APK" 2>/dev/null | grep "versionName" | sed "s/.*versionName='\([^']*\)'.*/\1/")
           echo "APK versionName: $VERSION_NAME"
           echo "Expected version: $EXPECTED"
           if [ -z "$VERSION_NAME" ]; then
