@@ -27,7 +27,7 @@ jobs:
               if not isinstance(data, list):
                   print('::error::Upstream API returned an error:', data.get('message', data), file=sys.stderr)
                   sys.exit(1)
-              print([r['tag_name'] for r in data if not r['draft']][0])
+              print([r['tag_name'] for r in data if not r['draft'] and not r['prerelease']][0])
               ")
           if [ -z "$TAG" ]; then
             echo "::error::Could not determine upstream release tag"
